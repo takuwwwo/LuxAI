@@ -5,4 +5,4 @@ Our Solution: https://github.com/takuwwwo/LuxAI/blob/main/solution.md
 
 Dataset: https://www.kaggle.com/bomac1/luxai-replay-dataset
 
-![img.png](img.png)
+![img.png](img/leader_board.png)

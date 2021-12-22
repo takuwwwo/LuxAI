@@ -10,7 +10,8 @@ Since it would not be desirable to train network from a complete mixture of data
 In inference, we used only the FC-layer which corresponds to the top agent.
 
 # Model
-![model_picture](https://drive.google.com/uc?export=view&id=1jV89OLQeqgJDv_zF0Pyu0CzYEw6BNbFB)
+[](![model_picture](https://drive.google.com/uc?export=view&id=1jV89OLQeqgJDv_zF0Pyu0CzYEw6BNbFB))
+![model_picture](img/model_architecure.jpg)
 
 - Channel Size: 384
 - The actions of all units and all citytiles output by one forward.
