@@ -45,11 +45,13 @@ Our actions model are not so different from others' solutions.
 - Do Nothing
 
 # Network Interpreter
-Using the network's output itself as the output of the agents, the performance wasn't so good, So we added some rules to interpret the network's output. The followings are some examples.
+Using the network's output itself as the output of the agents didn't show a better performance. So we added some rules to interpret the network's output. The followings are some examples.
 - Prohibit workers go to the same cell except citytile.
 - Prohibit workers in the citytile go to the same citytile's cell. (If this is allowed, some multiple workers continue to take the same actions.)
 - As to citytile's actions, the ratio of "Do Nothing" is so large and this prevents imitating the original agent correctly. 
   So in the situation where build workers is allowed, prioritized "Build Worker" in the order of the output score.
+  
+We've evaluated these rules through thousands of self-plays.
 
 # Code
 We published the code for the final model [here](https://github.com/takuwwwo/LuxAI).
