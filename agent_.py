@@ -18,8 +18,6 @@ def convert_state(game_state: Game, player: Player, opponent: Player, turn_contr
     width, height = game_state.map_width, game_state.map_height
 
     def get_pos_in_state(xx: int, yy: int):
-        """ state内での座標を返す
-        """
         pos_in_state = xx + (state_size - width) // 2, yy + (state_size - height) // 2
         return pos_in_state
 
@@ -170,17 +168,19 @@ def convert_state(game_state: Game, player: Player, opponent: Player, turn_contr
         for citytile in city.citytiles:
             x, y = get_pos_in_state(citytile.pos.x, citytile.pos.y)
             state[32, x, y] = city.light_upkeep / 200.
-    return state, state[25, :, :]
+    return state, state[18, :, :] <= 0.0
 
 
 class Agent:
-    def __init__(self, policy_net: PolicyNetwork, research_th: float = 0.0, research_turn: int = 10):
+    def __init__(self, policy_net: PolicyNetwork, device, research_th: float = 0.0, research_turn: int = 10):
         self.game_state = None
         self.policy_net = policy_net
         self.player_id = None
+        self.policy_device = device
         self.exploration_turn = None
         self.research_th = research_th
         self.research_turn = research_turn
+        self.map_size = 32
 
     def __call__(self, observation, configuration) -> List[str]:
         ### Do not edit ###
@@ -203,11 +203,14 @@ class Agent:
 
         game_state = self.game_state
         turn_controller = TurnController(self.game_state)
-        state_array = convert_state(self.game_state, player, opponent, turn_controller, state_size=self.map_size)
+        state_array, masking_array = convert_state(self.game_state, player, opponent, turn_controller)
+        target_array = state_array[25, :, :]
 
         state = torch.FloatTensor(state_array).to(self.policy_device).unsqueeze(0)  # make sample batchsize 1
-        target = state[:, 25, :, :]
-        (actions, action_probs, _), (citytile_actions, citytile_action_probs, _) = self.policy_net.act(state, target)
+        masking = torch.BoolTensor(masking_array).to(self.policy_device).unsqueeze(0)  # make sample batchsize 1
+        target = torch.FloatTensor(target_array).to(self.policy_device).unsqueeze(0)  # make sample batchsize 1
+        (actions, action_probs, _), (citytile_actions, citytile_action_probs, _) = self.policy_net.act(state,
+                                                                                                       masking, target)
 
         actions = actions[0].to('cpu').detach().numpy()  # actions.shape == (H, W)
         action_probs = action_probs[0].to('cpu').detach().numpy()  # action_probs.shape == (H, W, num_actions)
@@ -235,37 +238,25 @@ class Agent:
 
         action_list = []
         # city actions
-        if self.city_tile_pred:
-            unit_count = len(player.units)
-            build_worker_candidates = []
-            for city in player.cities.values():
-                for citytile in city.citytiles:
-                    if citytile.can_act():
-                        x, y = get_pos_in_state(citytile.pos.x, citytile.pos.y)
-                        prob = citytile_action_probs[x, y, 1]
-                        prob2 = citytile_action_probs[x, y, 0]
-                        build_worker_candidates.append((citytile, prob, prob2))
-            build_worker_candidates.sort(key=lambda x: x[1], reverse=True)  # rearrange by higher prob
-            for citytile, prob, prob2 in build_worker_candidates:
-                if unit_count < player.city_tile_count:
-                    action_list.append(citytile.build_worker())
-                    unit_count += 1
-                elif not player.researched_uranium():
-                    if prob2 < self.research_th and game_state.turn <= self.research_turn:
-                        continue
-                    action_list.append(citytile.research())
-                    player.research_points += 1
-        else:
-            unit_count = len(player.units)
-            for city in player.cities.values():
-                for city_tile in city.citytiles:
-                    if city_tile.can_act():
-                        if unit_count < player.city_tile_count:
-                            action_list.append(city_tile.build_worker())
-                            unit_count += 1
-                        elif not player.researched_uranium():
-                            action_list.append(city_tile.research())
-                            player.research_points += 1
+        unit_count = len(player.units)
+        build_worker_candidates = []
+        for city in player.cities.values():
+            for citytile in city.citytiles:
+                if citytile.can_act():
+                    x, y = get_pos_in_state(citytile.pos.x, citytile.pos.y)
+                    prob = citytile_action_probs[x, y, 1]
+                    prob2 = citytile_action_probs[x, y, 0]
+                    build_worker_candidates.append((citytile, prob, prob2))
+        build_worker_candidates.sort(key=lambda x: x[1], reverse=True)  # rearrange by higher prob
+        for citytile, prob, prob2 in build_worker_candidates:
+            if unit_count < player.city_tile_count:
+                action_list.append(citytile.build_worker())
+                unit_count += 1
+            elif not player.researched_uranium():
+                if prob2 < self.research_th and game_state.turn <= self.research_turn:
+                    continue
+                action_list.append(citytile.research())
+                player.research_points += 1
 
         pos_unit_dict = dict()
         for worker in player.units:

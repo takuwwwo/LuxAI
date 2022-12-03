@@ -43,10 +43,10 @@ def take_target_loss(outs: torch.Tensor, actions: torch.Tensor, targets: torch.T
     num_targets = torch.sum(targets).item()
 
     actions = actions.reshape(-1)
-    ce_loss_batch = F.cross_entropy(outs, actions, weight=weight, reduce=False) * targets  # 対象外のものは0にする
+    ce_loss_batch = F.cross_entropy(outs, actions, weight=weight, reduce=False) * targets
 
-    loss = torch.sum(ce_loss_batch) / num_targets  # 個別のインスタンスに対して平均を取る
-    acc = torch.sum((preds == actions.data) * targets) / num_targets  # ACCの平均を取る
+    loss = torch.sum(ce_loss_batch) / num_targets
+    acc = torch.sum((preds == actions.data) * targets) / num_targets
     return loss, acc, num_targets
 
 
@@ -77,8 +77,7 @@ def main():
             train_labels_list.append(i)
         for _ in range(len(valid_obses)):
             valid_labels_list.append(i)
-        print('train data: ', len(train_obses))
-        print('valid data: ', len(valid_obses))
+        print(f'submission ID: {submission_id}, train data: {len(train_obses)}, valid data: {len(valid_obses)}')
 
     device = torch.device('cuda:0')
     train_dataset = LuxDataset(train_obses_list, train_labels_list)
@@ -97,9 +96,9 @@ def main():
     model = MultipleAgentsNet(policy_net, num_agents=len(SUBMISSION_ID_LIST)).cuda()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
 
-    # if torch.cuda.device_count() > 1:
-    #     print("Let's use", torch.cuda.device_count(), "GPUs!")
-    #     model = nn.DataParallel(model)
+    if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model)
 
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 80], gamma=0.1)
 
@@ -162,8 +161,7 @@ def main():
             'epoch': epoch
         }, f'checkpoint.pth')
 
-    model_name = f'/home/LuxAI/src/rl/imitation_learning/models/' \
-                 f'policy_{SUBMISSION_ID_LIST[0]}_{len(SUBMISSION_ID_LIST)}.pth'
+    model_name = f'model.pth'
     if torch.cuda.device_count() > 1:
         torch.save(model.module.cpu().policy_net.state_dict(), model_name)
     else:
