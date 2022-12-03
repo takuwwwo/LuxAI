@@ -2,7 +2,7 @@ from typing import Tuple
 
 import torch
 from torch import nn
-import torch.functional as F
+import torch.nn.functional as F
 
 from agent_constants import MAP_SIZE
 
@@ -37,7 +37,7 @@ class BasicConv2d(nn.Module):
     """
     This class refers to https://www.kaggle.com/shoheiazuma/lux-ai-with-imitation-learning
     """
-    def __init__(self, input_dim: int, output_dim: int, kernel_size: int, bn: bool, use_se: bool = False):
+    def __init__(self, input_dim: int, output_dim: int, kernel_size: int, bn: bool, use_se: bool = True):
         super().__init__()
         self.conv = nn.Conv2d(
             input_dim, output_dim,
@@ -64,8 +64,8 @@ class LuxStateNet(nn.Module):
     """
     def __init__(self, in_channels: int, feature_size: int, layers: int):
         super().__init__()
-        self.conv0 = BasicConv2d(in_channels, feature_size, (3, 3), True)
-        self.blocks = nn.ModuleList([BasicConv2d(feature_size, feature_size, (3, 3), True) for _ in range(layers)])
+        self.conv0 = BasicConv2d(in_channels, feature_size, (3, 3), True, use_se=False)
+        self.blocks = nn.ModuleList([BasicConv2d(feature_size, feature_size, (3, 3), True, use_se=True) for _ in range(layers)])
         self.frelu_list = nn.ModuleList([FReLU(feature_size) for _ in range(layers)])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -132,3 +132,25 @@ class PolicyNetwork(nn.Module):
 
     def get_feature(self, states: torch.Tensor, maskings: torch.Tensor) -> torch.Tensor:
         return self.state_net(states, maskings)
+
+    def act(self, states: torch.Tensor, maskings: torch.Tensor, targets: torch.Tensor):
+        def _get_action_index_and_probs(x: torch.Tensor):
+            probs = F.softmax(x, dim=-1)  # x.shape == (B, H, W, out_dim)
+            actions = x.argmax(dim=-1)  # actions.shape == (B, H, W)
+
+            log_prob = self.get_log_prob(probs, actions, targets)
+            return actions, probs, log_prob
+        # targets.shape == (B, H, W)
+        x, y = self.forward(states, maskings)
+        return _get_action_index_and_probs(x), _get_action_index_and_probs(y)
+
+    def get_log_prob(self, probs: torch.Tensor, actions: torch.Tensor, targets: torch.Tensor):
+        probs = torch.gather(probs, dim=-1, index=actions.unsqueeze(-1)).squeeze(-1)  # probs.shape == (B, H, W)
+
+        referenced = torch.ones_like(probs)
+        probs = torch.where(targets == 1, probs, referenced)
+
+        prob = torch.prod(probs)
+        log_prob = torch.log(prob)
+
+        return log_prob
